@@ -1,6 +1,7 @@
 ### At Purgatoria, we handle the most serious matters with the least amount of seriousness.
 
-<img width="1810" height="630" alt="purgatoria_github_readme" src="https://github.com/user-attachments/assets/662f8f6b-adab-4074-b01b-94f984d133d2" />
+<img width="1810" height="630" alt="purgatoria_office_cat_2_min" src="https://github.com/user-attachments/assets/539f7362-6342-45b4-858f-93d438540174" />
+
 
 ## Why are we here?
 
