@@ -1,0 +1,104 @@
+name: Purgatoria Global Metrics Engine
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Haftalık (Pazar 00:00 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Process GraphQL Metrics
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 -c "
+          import json, urllib.request, os
+
+          token = os.environ['GH_TOKEN']
+          headers = {'Authorization': f'bearer {token}', 'User-Agent': 'Purgatoria-Metrics'}
+          
+          query = '''
+          query {
+            organization(login: \"Purgatoria\") {
+              followers { totalCount }
+              membersWithRole { totalCount }
+              repositories(first: 100, isFork: false, privacy: PUBLIC) {
+                totalCount
+                nodes {
+                  name
+                  stargazerCount
+                  forkCount
+                  primaryLanguage { name }
+                  releases { totalCount }
+                }
+              }
+            }
+            openPRs: search(query: \"org:Purgatoria type:pr state:open\", type: ISSUE) { issueCount }
+            closedPRs: search(query: \"org:Purgatoria type:pr state:closed\", type: ISSUE) { issueCount }
+            openIssues: search(query: \"org:Purgatoria type:issue state:open\", type: ISSUE) { issueCount }
+          }
+          '''
+          
+          req = urllib.request.Request('https://api.github.com/graphql', data=json.dumps({'query': query}).encode('utf-8'), headers=headers)
+          with urllib.request.urlopen(req) as resp:
+              data = json.loads(resp.read().decode('utf-8'))['data']
+
+          org = data['organization']
+          repos = org['repositories']['nodes']
+          
+          # Dilleri hesapla
+          languages = {}
+          for r in repos:
+              lang = r['primaryLanguage']['name'] if r['primaryLanguage'] else 'Other'
+              languages[lang] = languages.get(lang, 0) + 1
+
+          stats = {
+              'meta': {'organization': 'Purgatoria', 'updated_at': os.popen('date -u +%Y-%m-%dT%H:%M:%SZ').read().strip()},
+              'community': {
+                  'followers': org['followers']['totalCount'],
+                  'members': org['membersWithRole']['totalCount']
+              },
+              'repositories': {
+                  'total': org['repositories']['totalCount'],
+                  'stars': sum(r['stargazerCount'] for r in repos),
+                  'forks': sum(r['forkCount'] for r in repos),
+                  'releases': sum(r['releases']['totalCount'] for r in repos),
+                  'languages': languages
+              },
+              'contributions': {
+                  'open_prs': data['openPRs']['issueCount'],
+                  'closed_prs': data['closedPRs']['issueCount'],
+                  'total_prs': data['openPRs']['issueCount'] + data['closedPRs']['issueCount'],
+                  'open_issues': data['openIssues']['issueCount']
+              }
+          }
+
+          os.makedirs('public', exist_ok=True)
+          
+          # 1. Ana JSON çıktısı
+          with open('public/stats.json', 'w') as f:
+              json.dump(stats, f, indent=2)
+
+          # 2. Shields.io Custom Endpoint formatı (Rozetler için)
+          shields_stars = {'schemaVersion': 1, 'label': 'stars', 'message': str(stats['repositories']['stars']), 'color': 'brightgreen'}
+          with open('public/badge-stars.json', 'w') as f:
+              json.dump(shields_stars, f)
+          "
+
+      - name: Upload Artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'public'
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
