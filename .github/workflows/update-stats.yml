@@ -32,7 +32,6 @@ jobs:
           query = '''
           query {
             organization(login: \"Purgatoria\") {
-              followers { totalCount }
               repositories(first: 100, isFork: false, privacy: PUBLIC) {
                 totalCount
                 nodes {
@@ -73,9 +72,6 @@ jobs:
 
           stats = {
               'meta': {'organization': 'Purgatoria'},
-              'community': {
-                  'followers': org['followers']['totalCount']
-              },
               'repositories': {
                   'total': org['repositories']['totalCount'],
                   'stars': sum(r['stargazerCount'] for r in repos),
