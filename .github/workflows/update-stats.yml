@@ -1,6 +1,8 @@
 name: Purgatoria Global Metrics Engine
 
 on:
+  push:
+    branches: [ main ]
   schedule:
     - cron: '0 0 * * 0' # Haftalık (Pazar 00:00 UTC)
   workflow_dispatch:
@@ -31,7 +33,6 @@ jobs:
           query {
             organization(login: \"Purgatoria\") {
               followers { totalCount }
-              membersWithRole { totalCount }
               repositories(first: 100, isFork: false, privacy: PUBLIC) {
                 totalCount
                 nodes {
@@ -50,23 +51,30 @@ jobs:
           '''
           
           req = urllib.request.Request('https://api.github.com/graphql', data=json.dumps({'query': query}).encode('utf-8'), headers=headers)
-          with urllib.request.urlopen(req) as resp:
-              data = json.loads(resp.read().decode('utf-8'))['data']
+          
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  res_data = json.loads(resp.read().decode('utf-8'))
+                  if 'errors' in res_data:
+                      print('GraphQL Hata Detayi:', json.dumps(res_data['errors'], indent=2))
+                      exit(1)
+                  data = res_data['data']
+          except Exception as e:
+              print('API Istegi Basarisiz:', e)
+              exit(1)
 
           org = data['organization']
           repos = org['repositories']['nodes']
           
-          # Dilleri hesapla
           languages = {}
           for r in repos:
               lang = r['primaryLanguage']['name'] if r['primaryLanguage'] else 'Other'
               languages[lang] = languages.get(lang, 0) + 1
 
           stats = {
-              'meta': {'organization': 'Purgatoria', 'updated_at': os.popen('date -u +%Y-%m-%dT%H:%M:%SZ').read().strip()},
+              'meta': {'organization': 'Purgatoria'},
               'community': {
-                  'followers': org['followers']['totalCount'],
-                  'members': org['membersWithRole']['totalCount']
+                  'followers': org['followers']['totalCount']
               },
               'repositories': {
                   'total': org['repositories']['totalCount'],
@@ -84,12 +92,9 @@ jobs:
           }
 
           os.makedirs('public', exist_ok=True)
-          
-          # 1. Ana JSON çıktısı
           with open('public/stats.json', 'w') as f:
               json.dump(stats, f, indent=2)
 
-          # 2. Shields.io Custom Endpoint formatı (Rozetler için)
           shields_stars = {'schemaVersion': 1, 'label': 'stars', 'message': str(stats['repositories']['stars']), 'color': 'brightgreen'}
           with open('public/badge-stars.json', 'w') as f:
               json.dump(shields_stars, f)
